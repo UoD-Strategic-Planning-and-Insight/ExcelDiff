@@ -4,6 +4,7 @@ import openpyxl
 from openpyxl.cell import Cell
 from openpyxl.workbook import Workbook
 from openpyxl.worksheet.table import Table
+from openpyxl.worksheet.worksheet import Worksheet
 
 import Utils
 import Utils.boilerplate as bp
@@ -23,6 +24,19 @@ class RowDifference:
     cell_differences: list[CellDifference]
 
 
+@dataclass
+class DiffRequest:
+    old_path: str
+    new_path: str
+    diff_path: str
+
+
+@dataclass
+class ColumnContent:
+    column_name: str
+    column_cell_values: list[any]
+
+
 row_numbers_for_key_sets_in_old: dict[str, int] = {}
 row_numbers_for_key_sets_in_new: dict[str, int] = {}
 
@@ -33,16 +47,25 @@ def main():
 
     key_columns: list[str] = ["key1", "key2", "key3"]
 
-    folder_path = "C:/Users/yourusername/Desktop/Example folder"
-
-    old_file_path = folder_path + "/old.xlsx"
-    new_file_path = folder_path + "/new.xlsx"
-    diff_file_path = folder_path + "/diff.xlsx"
-
     sheet_name: str = "Sheet1"
     table_name: str = "Table1"
 
-    produce_diff(key_columns, sheet_name, table_name, old_file_path, new_file_path, diff_file_path)
+    folder_path: str = (r"C:\Users\yourusername\Desktop\Example folder\\")
+
+    diff_requests: list[DiffRequest] = \
+        [
+            DiffRequest(folder_path + "", folder_path + "", folder_path + "")
+        ]
+
+    produce_diffs(key_columns, sheet_name, table_name, diff_requests)
+
+
+def produce_diffs(key_columns: list[str], sheet_name: str, table_name: str, diff_requests: list[DiffRequest]):
+    for diff_request in diff_requests:
+        print(f"\nAbout to diff:\n    {diff_request.old_path}\n  & {diff_request.new_path}\n -> {diff_request.diff_path}")
+
+        produce_diff(key_columns, sheet_name, table_name,
+                     diff_request.old_path, diff_request.new_path, diff_request.diff_path)
 
 
 def produce_diff(key_columns:    list[str],
@@ -113,7 +136,69 @@ def produce_diff(key_columns:    list[str],
     for row in different_rows:
         print(f"{row}")
 
-    save_diffs_to_file(different_rows, rows_only_in_1, rows_only_in_2, diff_file_path)
+    print("About to check for columns only in 1st table.")
+
+    col_names_1 = old_tbl.get_column_names()
+    col_names_2 = new_tbl.get_column_names()
+
+    cols_only_in_1: list[ColumnContent] = []
+
+    for col_name in col_names_1:
+        if col_name not in col_names_2:
+            col_vals: list[any] = []
+
+            for row in old_tbl.iter_rows_with_column_names():
+                col_vals.append(row[col_name].value)
+
+            cols_only_in_1.append(ColumnContent(col_name, col_vals))
+
+    key_cols_in_1: list[ColumnContent] | None = None
+
+    if(len(cols_only_in_1) != 0):
+        key_cols_in_1 = []
+
+        for col_name in key_columns:
+            col_vals: list[any] = []
+
+            for row in old_tbl.iter_rows_with_column_names():
+                col_vals.append(row[col_name].value)
+
+            key_cols_in_1.append(ColumnContent(col_name, col_vals))
+
+    print("About to check for columns only in 2nd table.")
+
+    cols_only_in_2: list[ColumnContent] = []
+
+    for col_name in col_names_2:
+        if(col_name not in col_names_1):
+            col_vals: list[any] = []
+
+            for row in new_tbl.iter_rows_with_column_names():
+                col_vals.append(row[col_name].value)
+
+            cols_only_in_2.append(ColumnContent(col_name, col_vals))
+
+    key_cols_in_2: list[ColumnContent] | None = None
+
+    if(len(cols_only_in_2) != 0):
+        key_cols_in_2 = []
+
+        for col_name in key_columns:
+            col_vals: list[any] = []
+
+            for row in new_tbl.iter_rows_with_column_names():
+                col_vals.append(row[col_name].value)
+
+            key_cols_in_2.append(ColumnContent(col_name, col_vals))
+
+    save_diffs_to_file(different_rows,
+                       rows_only_in_1,
+                       rows_only_in_2,
+                       key_cols_in_1,
+                       key_cols_in_2,
+                       cols_only_in_1,
+                       cols_only_in_2,
+                       diff_file_path)
 
 
 def replace_quote_in_str(source: str) -> str:
@@ -188,10 +273,16 @@ def get_differences_between_rows(row1: dict[str, Cell], row2: dict[str, Cell]) -
     result: list[CellDifference] = []
 
     for k, v1 in row1.items():
-        v2 = row2[k]
+        v2: Cell | None = row2.get(k)
 
-        if(str(v1.value).strip() != str(v2.value).strip()):
-            result.append(CellDifference(k, str(v1.value).strip(), str(v2.value).strip()))
+        if(v2 is None):
+            continue
+
+        v1val = str(v1.value).strip() if v1.value is not None else ""
+        v2val = str(v2.value).strip() if v2.value is not None else ""
+
+        if(v1val != v2val):
+            result.append(CellDifference(k, v1val, v2val))
 
     return result
 
@@ -199,17 +290,27 @@ def get_differences_between_rows(row1: dict[str, Cell], row2: dict[str, Cell]) -
 def save_diffs_to_file(diffs:          list[RowDifference],
                        rows_only_in_1: list[dict[str, Cell]],
                        rows_only_in_2: list[dict[str, Cell]],
+                       key_cols_in_1:  list[ColumnContent] | None,
+                       key_cols_in_2:  list[ColumnContent] | None,
+                       cols_only_in_1: list[ColumnContent],
+                       cols_only_in_2: list[ColumnContent],
                        filepath:       str):
     wb = openpyxl.Workbook()
 
     add_diffs_sheet(wb, filepath, diffs)
-    add_only_in_one_sheet(wb, filepath, rows_only_in_1, 1)
-    add_only_in_one_sheet(wb, filepath, rows_only_in_2, 2)
+    add_rows_only_in_one_sheet(wb, filepath, rows_only_in_1, 1)
+    add_rows_only_in_one_sheet(wb, filepath, rows_only_in_2, 2)
+
+    add_columns_only_in_one_sheet(wb, filepath, key_cols_in_1, cols_only_in_1, 1)
+    add_columns_only_in_one_sheet(wb, filepath, key_cols_in_2, cols_only_in_2, 2)
 
     wb.save(filepath)
 
 
 def add_diffs_sheet(workbook: Workbook, filepath: str, diffs: list[RowDifference]):
+    if(len(diffs) == 0):
+        return
+
     workbook.create_sheet("Diff", 0)
     sheet = workbook.get_sheet_by_name("Diff")
 
@@ -246,12 +347,17 @@ def add_diffs_sheet(workbook: Workbook, filepath: str, diffs: list[RowDifference
             row[col_name_2].value = cell_diff.value2
 
 
-def add_only_in_one_sheet(workbook: Workbook, filepath: str, rows_only_in_one: list[dict[str, Cell]], index: int):
+def add_rows_only_in_one_sheet(workbook: Workbook,
+                               filepath: str,
+                               rows_only_in_one: list[dict[str, Cell]],
+                               index: int):
+
     if(len(rows_only_in_one) == 0):
         return
 
-    workbook.create_sheet(f"Only in {index}", index)
-    sheet = workbook.get_sheet_by_name(f"Only in {index}")
+    sheet_name: str = f"Rows only in {index}"
+    workbook.create_sheet(sheet_name, index)
+    sheet = workbook.get_sheet_by_name(sheet_name)
 
     column_names: list[str] = [x for x in rows_only_in_one[0].keys()]
 
@@ -269,6 +375,38 @@ def add_only_in_one_sheet(workbook: Workbook, filepath: str, rows_only_in_one: l
 
         for k, v in row.items():
             bottom_row[k].value = v.value
+
+def add_columns_only_in_one_sheet(workbook: Workbook,
+                                  filepath: str,
+                                  key_columns: list[ColumnContent],
+                                  columns_only_in_one: list[ColumnContent],
+                                  index: int):
+
+    if(len(columns_only_in_one) == 0):
+        return
+
+    sheet_name: str = f"Columns only in {index}"
+    workbook.create_sheet(sheet_name, index)
+    sheet = workbook.get_sheet_by_name(sheet_name)
+
+    row_count: int = len(columns_only_in_one[0].column_cell_values)
+
+    for i in range(len(key_columns)):
+        col_content: ColumnContent = key_columns[i]
+        sheet.cell(1, i + 1).value = col_content.column_name
+
+        for j in range(len(col_content.column_cell_values)):
+            sheet.cell(j + 2, i + 1).value = col_content.column_cell_values[j]
+
+    table = Table(displayName=f"ColOnlyIn{index}",
+                  ref=f"A1:{Utils.convert_int_to_alphabetic_number(len(key_columns))}{row_count + 1}")
+
+    sheet.add_table(table)
+
+    tbl_util = TableUtil(filepath, workbook, sheet, table)
+
+    for col in columns_only_in_one:
+        tbl_util.add_column(col.column_name, col.column_cell_values)
 
 
 if __name__ == '__main__':

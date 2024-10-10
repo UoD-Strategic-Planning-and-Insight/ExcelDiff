@@ -150,10 +150,11 @@ class TableUtil:
         for i in range(len(values)):
             self.source_worksheet.cell(self.max_row, self.min_col + i).value = values[i]
 
-    def add_column(self, column_name: str):
+    def add_column(self, column_name: str, values: list[any] = None):
         """
         Adds a column to the table this represents. This extends the table one column to the right in the sheet it's in.
         :param column_name: The name of the column. This will appear in the column header.
+        :param values: The values to populate the column with.
         """
 
         self.source_worksheet.cell(self.min_row, self.max_col + 1).value = column_name
@@ -162,6 +163,10 @@ class TableUtil:
         self.max_col_name = Utils.convert_int_to_alphabetic_number(self.max_col)
         self.ref = f"{self.min_col_name}{self.min_row}:{self.max_col_name}{self.max_row}"
         self.source_table.ref = self.ref
+
+        if(values is not None):
+            for i in range(len(values)):
+                self.source_worksheet.cell(self.min_row + i + 1, self.max_col, values[i])
 
     def get_column_names(self) -> list[str]:
         """
