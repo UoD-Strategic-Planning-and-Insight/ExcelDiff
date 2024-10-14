@@ -2,7 +2,7 @@
 Contains a class with improved support for accessing and modifying tables in an Excel file via OpenPyxl.
 """
 
-from typing import Generator
+from typing import Generator, List
 
 from openpyxl.cell import Cell
 from openpyxl.workbook import Workbook
@@ -137,7 +137,7 @@ class TableUtil:
 
             yield cells
 
-    def add_row(self, values: list[any]):
+    def add_row(self, values: list[any] | dict[str, any] | None = None):
         """
         Adds a row to the table this represents. This extends the table down one row in the sheet it's in.
         :param values: The values to populate the table rows with.
@@ -147,8 +147,26 @@ class TableUtil:
         self.ref = f"{self.min_col_name}{self.min_row}:{self.max_col_name}{self.max_row}"
         self.source_table.ref = self.ref
 
-        for i in range(len(values)):
-            self.source_worksheet.cell(self.max_row, self.min_col + i).value = values[i]
+        if(values is dict[str, any]):
+            value_dict: dict[str, any] = values
+            col_names: list[str] = self.get_column_names()
+
+            columns_to_add: list[str] = [x for x in value_dict.keys() if x not in col_names]
+            columns_to_add.sort()
+
+            for col_name in columns_to_add:
+                self.add_column(col_name)
+
+            row = self.get_bottom_row()
+
+            for k, v in value_dict.items():
+                row[k].value = v
+
+        elif(values is list[any]):
+            value_list: list[any] = values
+
+            for i in range(len(value_list)):
+                self.source_worksheet.cell(self.max_row, self.min_col + i).value = value_list[i]
 
     def add_column(self, column_name: str, values: list[any] = None):
         """

@@ -36,4 +36,28 @@ def convert_int_to_alphabetic_number(to_convert: int) -> str:
     return "".join(result_chars)
 
 
+def replace_quote_in_str(source: str) -> str:
+    quote_replacement_base: str = "quote$"
+    quote_replacement: str = "[quote$1]"
+    quote_replacement_int: int = 1
+
+    while(quote_replacement in source):
+        quote_replacement_int += 1
+        quote_replacement = f"[{quote_replacement_base}{quote_replacement_int}]"
+
+    return source.replace("\"", quote_replacement)
+
+
+def dict_to_str(dictionary: dict[str, any]) -> str:
+    # TODO: Note in documentation that this replaces quotes in the key and value to guarantee uniqueness is retained.
+
+    sorted_keys: list[str] = sorted(dictionary.keys())
+    keys_and_vals_as_strs: list[str] = []
+
+    for key in sorted_keys:
+        adjusted_key   = replace_quote_in_str(key)
+        adjusted_value = replace_quote_in_str(str(dictionary[key]))
+        keys_and_vals_as_strs.append(f"\"{adjusted_key}\": \"{adjusted_value}\"")
+
+    return "{" + (", ".join(keys_and_vals_as_strs)) + "}"
 
