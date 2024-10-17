@@ -207,7 +207,13 @@ class MainWindow:
         self.update_create_diff_button()
 
     def create_single_diff(self):
-        raise NotImplementedError("Not yet implemented.")
+        self._ui_create_diff_button["state"] = "disabled"
+        first_table: TableReference = self.table_selected_from_first_file
+        second_table: TableReference = self.table_selected_from_second_file
+
+        diff: TableDiff = TableDiff(first_table, second_table, self.destination_file_path, self.key_column_names)
+        diff.process_and_save()
+        self._ui_create_diff_button["state"] = "normal"
 
     def update_first_file_table_menu(self):
         if(self.first_file_path is None):
