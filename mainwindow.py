@@ -3,7 +3,7 @@ from typing import Any, List
 
 import tkinter as tk
 
-from tkinter import Tk, Label, Button, Grid, Listbox, Frame, LabelFrame, filedialog
+from tkinter import Tk, Label, Button, Grid, Listbox, Frame, LabelFrame, filedialog, Entry
 from tkinter.font import Font
 from tkinter.ttk import OptionMenu, Combobox
 
@@ -38,6 +38,14 @@ class MainWindow:
 
     _ui_second_file_table_menu: Combobox
 
+    _ui_key_input: Entry
+
+    _ui_key_input_button: Button
+
+    _ui_key_list: Listbox
+
+    _ui_key_delete_button: Button
+
     _ui_button_row_without_queue: Frame | None = None
 
     _ui_create_diff_button: Button | None
@@ -58,13 +66,16 @@ class MainWindow:
 
     table_selected_from_second_file: TableReference | None = None
 
+    key_column_names: list[str] = []
+
     diff_queue: list[TableDiff] = []
 
     def display(self):
         window: Tk = Tk()
         self._ui_window = window
-        window.geometry("600x400")
+        window.geometry("400x320")
         window.wm_title("ExcelDiff")
+        window.wm_minsize(400, 320)
 
         main_label_row = Frame(window)
         main_label_row.pack_configure(side="top", fill="x", pady=10)
@@ -78,7 +89,6 @@ class MainWindow:
         file_chooser_button_row.pack_configure(fill="x", expand=True)
         file_chooser_button_row.grid_columnconfigure(index=0, weight=1)
         file_chooser_button_row.grid_columnconfigure(index=1, weight=1)
-        file_chooser_button_row.grid_columnconfigure(index=2, weight=1)
         file_chooser_button_row_spacing = 5
 
         first_file_button: Button = Button(file_chooser_button_row, text="First", command=self.choose_first_file)
@@ -107,11 +117,49 @@ class MainWindow:
         second_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.update_selected_second_file_table())
         second_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.update_create_diff_button(), add=True)
 
-        output_file_button: Button = Button(file_chooser_button_row, text="Choose diff location", command=self.choose_destination_file)
-        output_file_button.grid_configure(column=2, row=0, sticky="EW", padx=file_chooser_button_row_spacing)
-        output_file_path_label: Label = Label(file_chooser_button_row, text="(No destination chosen)")
-        output_file_path_label.grid_configure(column=2, row=1, padx=file_chooser_button_row_spacing)
+        diff_config_row_container: Frame = Frame(window)
+        diff_config_row_container.pack_configure(side="top", fill="both", expand=True, pady=(20, 0))
+        diff_config_row: Frame = Frame(diff_config_row_container)
+        diff_config_row.pack_configure(fill="both", expand=True)
+        diff_config_row.grid_columnconfigure(index=0, weight=1)
+        diff_config_row.grid_columnconfigure(index=1, weight=1)
+        diff_config_row.grid_rowconfigure(index=0, weight=1)
+        diff_config_row_spacing = 5
+
+        key_list_container: Frame = Frame(diff_config_row)
+        key_list_container.grid_configure(column=0, row=0, sticky="NSEW", padx=diff_config_row_spacing, pady=diff_config_row_spacing)
+        key_list_container.grid_columnconfigure(index=0, weight=1)
+        key_list_container.rowconfigure(index=2, weight=1)
+        key_list_label: Label = Label(key_list_container, text="Enter a key or compound key column names")
+        key_list_label.grid_configure(column=0, row=0, sticky="EW")
+        key_list_input_container: Frame = Frame(key_list_container)
+        key_list_input_container.grid_configure(column=0, row=1, sticky="EW")
+        key_list_input_textbox: Entry = Entry(key_list_input_container)
+        key_list_input_textbox.pack_configure(fill="x", expand=True, side="left")
+        key_list_input_textbox.bind("<Return>", lambda e: self.add_key_column_from_input())
+        self._ui_key_input = key_list_input_textbox
+        key_list_input_button: Button = Button(key_list_input_container, text="+", command=self.add_key_column_from_input)
+        key_list_input_button.pack_configure(side="right")
+        self._ui_key_input_button = key_list_input_button
+        key_list_list: Listbox = Listbox(key_list_container, height=0)
+        key_list_list.grid_configure(column=0, row=2, sticky="NSEW", pady=diff_config_row_spacing)
+        key_list_list.bind("<<ListboxSelect>>", lambda e: self.update_key_delete_button())
+        self._ui_key_list = key_list_list
+        key_list_delete_button: Button = Button(key_list_container, text="Remove key", command=self.remove_selected_key,
+                                                background="#ffafaf", activebackground="#bc6262", state="disabled")
+        key_list_delete_button.grid_configure(column=0, row=3, sticky="W")
+        self._ui_key_delete_button = key_list_delete_button
+
+        output_file_container: Frame = Frame(diff_config_row)
+        output_file_container.grid_configure(column=1, row=0, sticky="NSEW", padx=diff_config_row_spacing, pady=diff_config_row_spacing)
+        output_file_container.grid_columnconfigure(index=0, weight=1)
+        output_file_button: Button = Button(output_file_container, text="Choose diff location", command=self.choose_destination_file)
+        output_file_button.grid_configure(column=0, row=0, sticky="EW", padx=diff_config_row_spacing)
+        output_file_path_label: Label = Label(output_file_container, text="(No destination chosen)")
+        output_file_path_label.grid_configure(column=0, row=1, padx=diff_config_row_spacing)
         self._ui_destination_file_label = output_file_path_label
+
+
 
         self._show_button_row()
 
@@ -198,12 +246,46 @@ class MainWindow:
             return
 
         if(None in [self.first_file_path, self.second_file_path, self.destination_file_path,
-                    self.table_selected_from_first_file, self.table_selected_from_second_file]):
+                    self.table_selected_from_first_file, self.table_selected_from_second_file]
+                or len(self.key_column_names) == 0):
 
             self._ui_create_diff_button["state"] = "disabled"
             return
 
         self._ui_create_diff_button["state"] = "normal"
+
+    def update_key_delete_button(self):
+        if(len(self._ui_key_list.curselection()) == 0):
+            self._ui_key_delete_button["state"] = "disabled"
+            return
+
+        self._ui_key_delete_button["state"] = "normal"
+
+    def add_key_column_from_input(self):
+        key_input: Entry = self._ui_key_input
+        key_name: str = key_input.get().strip()
+
+        if(key_name == ""):
+            return
+
+        key_input.delete(0, "end")
+        self.key_column_names.append(key_name)
+        self._ui_key_list.insert("end", key_name)
+        self.update_key_delete_button()
+        self.update_create_diff_button()
+
+    def remove_selected_key(self):
+        key_list: Listbox = self._ui_key_list
+        curselection: tuple = key_list.curselection()
+
+        if(len(curselection) == 0):
+            return
+
+        selected_index = curselection[0]
+        del self.key_column_names[selected_index]
+        key_list.delete(selected_index)
+        self.update_key_delete_button()
+        self.update_create_diff_button()
 
     def add_diff_to_queue(self, first_filepath: str, second_filepath: str):
         # self.diff_queue.append(TableDiff())
@@ -226,7 +308,7 @@ class MainWindow:
 
     def _show_button_row(self):
         action_button_row: Frame = Frame(self._ui_window)
-        action_button_row.pack_configure(side="bottom", fill="x")
+        action_button_row.pack_configure(side="bottom", fill="x", pady=(20, 0))
         enqueue_button: Button = Button(action_button_row, text="Enqueue")
         enqueue_button.pack_configure(side="left", padx=5, pady=5)
         enqueue_button["state"] = "disabled"
