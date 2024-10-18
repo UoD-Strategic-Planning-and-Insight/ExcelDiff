@@ -38,9 +38,7 @@ class MainWindow:
 
     _ui_second_file_table_menu: Combobox
 
-    _ui_key_input: Entry
-
-    _ui_key_input_button: Button
+    _ui_key_list_menu: Combobox
 
     _ui_key_list: Listbox
 
@@ -65,6 +63,10 @@ class MainWindow:
     table_selected_from_first_file: TableReference | None = None
 
     table_selected_from_second_file: TableReference | None = None
+
+    column_names_in_tables_from_first_file: dict[str, list[str]] | None
+
+    column_names_in_tables_from_second_file: dict[str, list[str]] | None
 
     key_column_names: list[str] = []
 
@@ -101,8 +103,7 @@ class MainWindow:
         first_file_table_menu.grid_configure(column=0, row=2, sticky="EW", padx=file_chooser_button_row_spacing)
         first_file_table_menu.set("Choose a table...")
         self._ui_first_file_table_menu = first_file_table_menu
-        first_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.update_selected_first_file_table())
-        first_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.update_create_diff_button(), add=True)
+        first_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.choose_first_table())
 
         second_file_button: Button = Button(file_chooser_button_row, text="Second", command=self.choose_second_file)
         second_file_button.grid_configure(column=1, row=0, sticky="EW", padx=file_chooser_button_row_spacing)
@@ -114,8 +115,7 @@ class MainWindow:
         second_file_table_menu.grid_configure(column=1, row=2, sticky="EW", padx=file_chooser_button_row_spacing)
         second_file_table_menu.set("Choose a table...")
         self._ui_second_file_table_menu = second_file_table_menu
-        second_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.update_selected_second_file_table())
-        second_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.update_create_diff_button(), add=True)
+        second_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.choose_second_table())
 
         diff_config_row_container: Frame = Frame(window)
         diff_config_row_container.pack_configure(side="top", fill="both", expand=True, pady=(20, 0))
@@ -132,15 +132,11 @@ class MainWindow:
         key_list_container.rowconfigure(index=2, weight=1)
         key_list_label: Label = Label(key_list_container, text="Enter a key or compound key column names")
         key_list_label.grid_configure(column=0, row=0, sticky="EW")
-        key_list_input_container: Frame = Frame(key_list_container)
-        key_list_input_container.grid_configure(column=0, row=1, sticky="EW")
-        key_list_input_textbox: Entry = Entry(key_list_input_container)
-        key_list_input_textbox.pack_configure(fill="x", expand=True, side="left")
-        key_list_input_textbox.bind("<Return>", lambda e: self.add_key_column_from_input())
-        self._ui_key_input = key_list_input_textbox
-        key_list_input_button: Button = Button(key_list_input_container, text="+", command=self.add_key_column_from_input)
-        key_list_input_button.pack_configure(side="right")
-        self._ui_key_input_button = key_list_input_button
+        key_list_menu: Combobox = Combobox(key_list_container, state="disabled")
+        key_list_menu.grid_configure(column=0, row=1, sticky="EW")
+        key_list_menu.set("Choose a column...")
+        key_list_menu.bind("<<ComboboxSelected>>", lambda e: self.add_key_column_from_input())
+        self._ui_key_list_menu = key_list_menu
         key_list_list: Listbox = Listbox(key_list_container, height=0)
         key_list_list.grid_configure(column=0, row=2, sticky="NSEW", pady=diff_config_row_spacing)
         key_list_list.bind("<<ListboxSelect>>", lambda e: self.update_key_delete_button())
@@ -175,14 +171,13 @@ class MainWindow:
             return
 
         self.first_file_path = path
-        self.tables_in_first_file = self._get_tables_in_file(path)
+        wb: Workbook = openpyxl.load_workbook(path, data_only=True)
+        self.tables_in_first_file = self._get_tables_in_file(path, wb)
+        self.column_names_in_tables_from_first_file = self._get_column_names_in_file(wb)
         self._ui_first_file_label.config(text=os.path.basename(path))
         self.update_first_file_table_menu()
+        self.update_key_menu()
         self.update_create_diff_button()
-
-        # self._ui_first_file_table_menu.config(comm=lambda: self._ui_first_file_table_menu.insert("end", "Doot"))
-        # self._ui_first_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self._ui_first_file_table_menu.insert("end", "Doot"))
-        # self._ui_first_file_table_menu.bind("<Button-1>", lambda e: print("Doot!"))
 
     def choose_second_file(self):
         path: str = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")], title="Second file")
@@ -191,10 +186,23 @@ class MainWindow:
             return
 
         self.second_file_path = path
-        self.tables_in_second_file = self._get_tables_in_file(path)
+        wb: Workbook = openpyxl.load_workbook(path, data_only=True)
+        self.tables_in_second_file = self._get_tables_in_file(path, wb)
+        self.column_names_in_tables_from_second_file = self._get_column_names_in_file(wb)
         self._ui_second_file_label.config(text=os.path.basename(path))
         self.update_second_file_table_menu()
+        self.update_key_menu()
         self.update_create_diff_button()
+
+    def choose_first_table(self):
+        self.update_selected_first_file_table()
+        self.update_create_diff_button()
+        self.update_key_menu()
+
+    def choose_second_table(self):
+        self.update_selected_second_file_table()
+        self.update_create_diff_button()
+        self.update_key_menu()
 
     def choose_destination_file(self):
         path: str = filedialog.asksaveasfilename(confirmoverwrite=True, defaultextension=".xlsx", filetypes=[("Excel file", "*.xlsx")])
@@ -260,6 +268,38 @@ class MainWindow:
 
         self._ui_create_diff_button["state"] = "normal"
 
+    def update_key_menu(self):
+        if(self.table_selected_from_first_file is None or self.table_selected_from_second_file is None):
+            self._ui_key_list_menu.set("Choose a column...")
+            self._ui_key_list_menu["state"] = "disabled"
+            return
+
+        column_names_from_first_table \
+            = self.column_names_in_tables_from_first_file[self.table_selected_from_first_file.table_name]
+
+        column_names_from_second_table \
+            = self.column_names_in_tables_from_second_file[self.table_selected_from_second_file.table_name]
+
+        shared_column_names: list[str] \
+            = [x for x in column_names_from_first_table if x in column_names_from_second_table]
+
+        if(len(shared_column_names) == 0):
+            self._ui_key_list_menu.set("(No shared columns)")
+            self._ui_key_list_menu["state"] = "disabled"
+            return
+
+        for column_name in self.key_column_names:
+            shared_column_names.remove(column_name)
+
+        if(len(shared_column_names) == 0):
+            self._ui_key_list_menu.set("(No remaining shared columns)")
+            self._ui_key_list_menu["state"] = "disabled"
+            return
+
+        self._ui_key_list_menu.config(values=shared_column_names)
+        self._ui_key_list_menu.set("Choose a column...")
+        self._ui_key_list_menu["state"] = "readonly"
+
     def update_key_delete_button(self):
         if(len(self._ui_key_list.curselection()) == 0):
             self._ui_key_delete_button["state"] = "disabled"
@@ -268,15 +308,14 @@ class MainWindow:
         self._ui_key_delete_button["state"] = "normal"
 
     def add_key_column_from_input(self):
-        key_input: Entry = self._ui_key_input
-        key_name: str = key_input.get().strip()
+        key_chooser: Combobox = self._ui_key_list_menu
+        key_name: str = key_chooser.get()
 
-        if(key_name == ""):
-            return
-
-        key_input.delete(0, "end")
+        key_chooser.set("Choose a column...")
         self.key_column_names.append(key_name)
         self._ui_key_list.insert("end", key_name)
+
+        self.update_key_menu()
         self.update_key_delete_button()
         self.update_create_diff_button()
 
@@ -292,6 +331,7 @@ class MainWindow:
         key_list.delete(selected_index)
         self.update_key_delete_button()
         self.update_create_diff_button()
+        self.update_key_menu()
 
     def add_diff_to_queue(self, first_filepath: str, second_filepath: str):
         # self.diff_queue.append(TableDiff())
@@ -364,10 +404,8 @@ class MainWindow:
         self._hide_diff_queue()
         self._show_diff_queue()
 
-    def _get_tables_in_file(self, filepath: str) -> list[TableReference]:
+    def _get_tables_in_file(self, filepath: str, wb: Workbook) -> list[TableReference]:
         result: list[TableReference] = []
-
-        wb: Workbook = openpyxl.load_workbook(filepath, data_only=True)
         sheet_names = wb.sheetnames
 
         for sheet_name in sheet_names:
@@ -377,5 +415,17 @@ class MainWindow:
 
             for table_name in sheet.tables.keys():
                 result.append(TableReference(filepath, sheet_name, table_name))
+
+        return result
+
+    def _get_column_names_in_file(self, wb: Workbook) -> dict[str, list[str]]:
+        result: dict[str, list[str]] = {}
+
+        for sheet in wb.worksheets:
+            name: str
+
+            for name in sheet.tables.keys():
+                table: Table = sheet.tables[name]
+                result[name] = table.column_names
 
         return result
