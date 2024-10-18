@@ -22,6 +22,8 @@ from diff import TableDiff, TableReference
 # TODO: Add a progress bar when processing the diffs.
 
 class MainWindow:
+    # region UI fields
+
     _ui_window: Tk
 
     _ui_first_file_button: Button
@@ -49,6 +51,8 @@ class MainWindow:
     _ui_create_diff_button: Button | None
 
     _ui_diff_queue: Frame | None = None
+
+    # endregion
 
     first_file_path: str | None = None
 
@@ -93,7 +97,7 @@ class MainWindow:
         file_chooser_button_row.grid_columnconfigure(index=1, weight=1)
         file_chooser_button_row_spacing = 5
 
-        first_file_button: Button = Button(file_chooser_button_row, text="First", command=self.choose_first_file)
+        first_file_button: Button = Button(file_chooser_button_row, text="First", command=self.on_click_choose_first_file)
         first_file_button.grid_configure(column=0, row=0, sticky="EW", padx=file_chooser_button_row_spacing)
         self._ui_first_file_button = first_file_button
         first_file_path_label: Label = Label(file_chooser_button_row, text="(No file selected)")
@@ -103,9 +107,9 @@ class MainWindow:
         first_file_table_menu.grid_configure(column=0, row=2, sticky="EW", padx=file_chooser_button_row_spacing)
         first_file_table_menu.set("Choose a table...")
         self._ui_first_file_table_menu = first_file_table_menu
-        first_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.choose_first_table())
+        first_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.on_choose_first_table())
 
-        second_file_button: Button = Button(file_chooser_button_row, text="Second", command=self.choose_second_file)
+        second_file_button: Button = Button(file_chooser_button_row, text="Second", command=self.on_click_choose_second_file)
         second_file_button.grid_configure(column=1, row=0, sticky="EW", padx=file_chooser_button_row_spacing)
         self._ui_second_file_button = second_file_button
         second_file_path_label: Label = Label(file_chooser_button_row, text="(No file selected)")
@@ -115,7 +119,7 @@ class MainWindow:
         second_file_table_menu.grid_configure(column=1, row=2, sticky="EW", padx=file_chooser_button_row_spacing)
         second_file_table_menu.set("Choose a table...")
         self._ui_second_file_table_menu = second_file_table_menu
-        second_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.choose_second_table())
+        second_file_table_menu.bind("<<ComboboxSelected>>", lambda e: self.on_choose_second_table())
 
         diff_config_row_container: Frame = Frame(window)
         diff_config_row_container.pack_configure(side="top", fill="both", expand=True, pady=(20, 0))
@@ -135,13 +139,13 @@ class MainWindow:
         key_list_menu: Combobox = Combobox(key_list_container, state="disabled")
         key_list_menu.grid_configure(column=0, row=1, sticky="EW")
         key_list_menu.set("Choose a column...")
-        key_list_menu.bind("<<ComboboxSelected>>", lambda e: self.add_key_column_from_input())
+        key_list_menu.bind("<<ComboboxSelected>>", lambda e: self.on_choose_key_column())
         self._ui_key_list_menu = key_list_menu
         key_list_list: Listbox = Listbox(key_list_container, height=0)
         key_list_list.grid_configure(column=0, row=2, sticky="NSEW", pady=diff_config_row_spacing)
-        key_list_list.bind("<<ListboxSelect>>", lambda e: self.update_key_delete_button())
+        key_list_list.bind("<<ListboxSelect>>", lambda e: self.on_select_added_key_column())
         self._ui_key_list = key_list_list
-        key_list_delete_button: Button = Button(key_list_container, text="Remove key", command=self.remove_selected_key,
+        key_list_delete_button: Button = Button(key_list_container, text="Remove key", command=self.on_click_remove_key,
                                                 background="#ffafaf", activebackground="#bc6262", state="disabled")
         key_list_delete_button.grid_configure(column=0, row=3, sticky="W")
         self._ui_key_delete_button = key_list_delete_button
@@ -149,7 +153,7 @@ class MainWindow:
         output_file_container: Frame = Frame(diff_config_row)
         output_file_container.grid_configure(column=1, row=0, sticky="NSEW", padx=diff_config_row_spacing, pady=diff_config_row_spacing)
         output_file_container.grid_columnconfigure(index=0, weight=1)
-        output_file_button: Button = Button(output_file_container, text="Choose diff location", command=self.choose_destination_file)
+        output_file_button: Button = Button(output_file_container, text="Choose diff location", command=self.on_click_choose_destination)
         output_file_button.grid_configure(column=0, row=0, sticky="EW", padx=diff_config_row_spacing)
         output_file_path_label: Label = Label(output_file_container, text="(No destination chosen)")
         output_file_path_label.grid_configure(column=0, row=1, padx=diff_config_row_spacing)
@@ -164,7 +168,9 @@ class MainWindow:
 
         window.mainloop()
 
-    def choose_first_file(self):
+    # region on_event methods
+
+    def on_click_choose_first_file(self):
         path: str = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")], title="First file")
 
         if(path == ""):
@@ -179,7 +185,7 @@ class MainWindow:
         self.update_key_menu()
         self.update_create_diff_button()
 
-    def choose_second_file(self):
+    def on_click_choose_second_file(self):
         path: str = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")], title="Second file")
 
         if(path == ""):
@@ -194,17 +200,46 @@ class MainWindow:
         self.update_key_menu()
         self.update_create_diff_button()
 
-    def choose_first_table(self):
+    def on_choose_first_table(self):
         self.update_selected_first_file_table()
         self.update_create_diff_button()
         self.update_key_menu()
 
-    def choose_second_table(self):
+    def on_choose_second_table(self):
         self.update_selected_second_file_table()
         self.update_create_diff_button()
         self.update_key_menu()
 
-    def choose_destination_file(self):
+    def on_choose_key_column(self):
+        key_chooser: Combobox = self._ui_key_list_menu
+        key_name: str = key_chooser.get()
+
+        key_chooser.set("Choose a column...")
+        self.key_column_names.append(key_name)
+        self._ui_key_list.insert("end", key_name)
+
+        self.update_key_menu()
+        self.update_key_delete_button()
+        self.update_create_diff_button()
+
+    def on_select_added_key_column(self):
+        self.update_key_delete_button()
+
+    def on_click_remove_key(self):
+        key_list: Listbox = self._ui_key_list
+        curselection: tuple = key_list.curselection()
+
+        if(len(curselection) == 0):
+            return
+
+        selected_index = curselection[0]
+        del self.key_column_names[selected_index]
+        key_list.delete(selected_index)
+        self.update_key_delete_button()
+        self.update_create_diff_button()
+        self.update_key_menu()
+
+    def on_click_choose_destination(self):
         path: str = filedialog.asksaveasfilename(confirmoverwrite=True, defaultextension=".xlsx", filetypes=[("Excel file", "*.xlsx")])
 
         if(path == ""):
@@ -214,7 +249,7 @@ class MainWindow:
         self._ui_destination_file_label.config(text=os.path.basename(path))
         self.update_create_diff_button()
 
-    def create_single_diff(self):
+    def on_click_create_single_diff(self):
         self._ui_create_diff_button["state"] = "disabled"
         first_table: TableReference = self.table_selected_from_first_file
         second_table: TableReference = self.table_selected_from_second_file
@@ -222,6 +257,10 @@ class MainWindow:
         diff: TableDiff = TableDiff(first_table, second_table, self.destination_file_path, self.key_column_names)
         diff.process_and_save()
         self.clear_inputs()
+
+    #endregion
+
+    #region update UI element methods
 
     def update_first_file_table_menu(self):
         if(self.first_file_path is None):
@@ -317,31 +356,7 @@ class MainWindow:
 
         self._ui_key_delete_button["state"] = "normal"
 
-    def add_key_column_from_input(self):
-        key_chooser: Combobox = self._ui_key_list_menu
-        key_name: str = key_chooser.get()
-
-        key_chooser.set("Choose a column...")
-        self.key_column_names.append(key_name)
-        self._ui_key_list.insert("end", key_name)
-
-        self.update_key_menu()
-        self.update_key_delete_button()
-        self.update_create_diff_button()
-
-    def remove_selected_key(self):
-        key_list: Listbox = self._ui_key_list
-        curselection: tuple = key_list.curselection()
-
-        if(len(curselection) == 0):
-            return
-
-        selected_index = curselection[0]
-        del self.key_column_names[selected_index]
-        key_list.delete(selected_index)
-        self.update_key_delete_button()
-        self.update_create_diff_button()
-        self.update_key_menu()
+    # endregion
 
     def add_diff_to_queue(self, first_filepath: str, second_filepath: str):
         # self.diff_queue.append(TableDiff())
@@ -396,7 +411,7 @@ class MainWindow:
         enqueue_button: Button = Button(action_button_row, text="Enqueue")
         enqueue_button.pack_configure(side="left", padx=5, pady=5)
         enqueue_button["state"] = "disabled"
-        create_diff_button: Button = Button(action_button_row, text="Create diff", command=self.create_single_diff)
+        create_diff_button: Button = Button(action_button_row, text="Create diff", command=self.on_click_create_single_diff)
         create_diff_button.pack_configure(side="right", fill="x", expand=True, padx=5, pady=5)
         self._ui_create_diff_button       = create_diff_button
         self._ui_button_row_without_queue = action_button_row
