@@ -64,9 +64,9 @@ class MainWindow:
 
     table_selected_from_second_file: TableReference | None = None
 
-    column_names_in_tables_from_first_file: dict[str, list[str]] | None
+    column_names_in_tables_from_first_file: dict[str, list[str]] | None = None
 
-    column_names_in_tables_from_second_file: dict[str, list[str]] | None
+    column_names_in_tables_from_second_file: dict[str, list[str]] | None = None
 
     key_column_names: list[str] = []
 
@@ -221,7 +221,7 @@ class MainWindow:
 
         diff: TableDiff = TableDiff(first_table, second_table, self.destination_file_path, self.key_column_names)
         diff.process_and_save()
-        self._ui_create_diff_button["state"] = "normal"
+        self.clear_inputs()
 
     def update_first_file_table_menu(self):
         if(self.first_file_path is None):
@@ -244,12 +244,22 @@ class MainWindow:
         self._ui_second_file_table_menu["state"] = "readonly"
 
     def update_selected_first_file_table(self):
+        if(self.first_file_path is None):
+            self._ui_first_file_table_menu.set("Choose a table...")
+            self._ui_first_file_table_menu["state"] = "disabled"
+            return
+
         table_name: str = self._ui_first_file_table_menu.get()
 
         matching_tables: list[TableReference] = [x for x in self.tables_in_first_file if x.table_name == table_name]
         self.table_selected_from_first_file = matching_tables[0] if len(matching_tables) > 0 else None
 
     def update_selected_second_file_table(self):
+        if(self.first_file_path is None):
+            self._ui_second_file_table_menu.set("Choose a table...")
+            self._ui_second_file_table_menu["state"] = "disabled"
+            return
+
         table_name: str = self._ui_second_file_table_menu.get()
 
         matching_tables: list[TableReference] = [x for x in self.tables_in_second_file if x.table_name == table_name]
@@ -336,6 +346,34 @@ class MainWindow:
     def add_diff_to_queue(self, first_filepath: str, second_filepath: str):
         # self.diff_queue.append(TableDiff())
         pass
+
+    def clear_inputs(self):
+        self._ui_first_file_label.config(text="(No file selected)")
+        self.first_file_path = None
+        self.tables_in_first_file = None
+        self.column_names_in_tables_from_first_file = None
+        self.table_selected_from_first_file = None
+
+        self._ui_second_file_label.config(text="(No file selected)")
+        self.second_file_path = None
+        self.tables_in_second_file = None
+        self.column_names_in_tables_from_second_file = None
+        self.table_selected_from_second_file = None
+
+        self.key_column_names = []
+
+        self._ui_destination_file_label.config(text="(No destination chosen)")
+        self.destination_file_path = None
+
+        self._ui_key_list.delete(0, "end")
+
+        self.update_first_file_table_menu()
+        self.update_second_file_table_menu()
+        self.update_key_menu()
+        self.update_key_delete_button()
+        self.update_create_diff_button()
+        self.update_selected_first_file_table()
+        self.update_selected_second_file_table()
 
     def _hide_button_row(self):
         if(self._ui_button_row_without_queue is None):
