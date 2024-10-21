@@ -48,9 +48,19 @@ class MainWindow:
 
     _ui_button_row_without_queue: Frame | None = None
 
-    _ui_create_diff_button: Button | None
+    _ui_enqueue_button: Button | None = None
+
+    _ui_create_diff_button: Button | None = None
 
     _ui_diff_queue: Frame | None = None
+
+    _ui_add_to_queue_button: Button | None = None
+
+    _ui_diff_queue_listbox: Listbox | None = None
+
+    _ui_remove_from_queue_button: Button | None = None
+
+    _ui_create_diffs_from_queue_button: Button | None = None
 
     # endregion
 
@@ -183,7 +193,7 @@ class MainWindow:
         self._ui_first_file_label.config(text=os.path.basename(path))
         self.update_first_file_table_menu()
         self.update_key_menu()
-        self.update_create_diff_button()
+        self.update_button_row()
 
     def on_click_choose_second_file(self):
         path: str = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")], title="Second file")
@@ -198,16 +208,16 @@ class MainWindow:
         self._ui_second_file_label.config(text=os.path.basename(path))
         self.update_second_file_table_menu()
         self.update_key_menu()
-        self.update_create_diff_button()
+        self.update_button_row()
 
     def on_choose_first_table(self):
         self.update_selected_first_file_table()
-        self.update_create_diff_button()
+        self.update_button_row()
         self.update_key_menu()
 
     def on_choose_second_table(self):
         self.update_selected_second_file_table()
-        self.update_create_diff_button()
+        self.update_button_row()
         self.update_key_menu()
 
     def on_choose_key_column(self):
@@ -220,7 +230,7 @@ class MainWindow:
 
         self.update_key_menu()
         self.update_key_delete_button()
-        self.update_create_diff_button()
+        self.update_button_row()
 
     def on_select_added_key_column(self):
         self.update_key_delete_button()
@@ -236,7 +246,7 @@ class MainWindow:
         del self.key_column_names[selected_index]
         key_list.delete(selected_index)
         self.update_key_delete_button()
-        self.update_create_diff_button()
+        self.update_button_row()
         self.update_key_menu()
 
     def on_click_choose_destination(self):
@@ -247,16 +257,62 @@ class MainWindow:
 
         self.destination_file_path = path
         self._ui_destination_file_label.config(text=os.path.basename(path))
-        self.update_create_diff_button()
+        self.update_button_row()
+
+    def on_click_enqueue(self):
+
+        first_table:  TableReference = self.table_selected_from_first_file
+        second_table: TableReference = self.table_selected_from_second_file
+        diff:         TableDiff      = TableDiff(first_table, second_table, self.destination_file_path, self.key_column_names)
+
+        self.diff_queue.append(diff)
+        self.clear_inputs()
+        self._switch_to_diff_queue()
 
     def on_click_create_single_diff(self):
         self._ui_create_diff_button["state"] = "disabled"
+        self._ui_enqueue_button["state"] = "disabled"
         first_table: TableReference = self.table_selected_from_first_file
         second_table: TableReference = self.table_selected_from_second_file
 
         diff: TableDiff = TableDiff(first_table, second_table, self.destination_file_path, self.key_column_names)
         diff.process_and_save()
         self.clear_inputs()
+
+    def on_click_add_to_queue_button(self):
+        first_table: TableReference = self.table_selected_from_first_file
+        second_table: TableReference = self.table_selected_from_second_file
+        diff: TableDiff = TableDiff(first_table, second_table, self.destination_file_path, self.key_column_names)
+
+        self.diff_queue.append(diff)
+        self.add_diff_to_queue_listbox(diff)
+        self.clear_inputs()
+
+    def on_selected_queued_diff(self):
+        self.update_remove_diff_button()
+
+    def on_click_remove_from_queue(self):
+        key_list: Listbox = self._ui_diff_queue_listbox
+        curselection: tuple = key_list.curselection()
+
+        if(len(curselection) == 0):
+            return
+
+        selected_index = curselection[0]
+        del self.diff_queue[selected_index]
+        key_list.delete(selected_index)
+        self.update_remove_diff_button()
+
+        if(len(self.diff_queue) == 0):
+            self._switch_to_button_row()
+
+    def on_click_create_diffs(self):
+        diffs_to_process = [x for x in self.diff_queue]
+        self.clear_queue()
+
+        for diff in diffs_to_process:
+            diff.process_and_save()
+
 
     #endregion
 
@@ -304,19 +360,6 @@ class MainWindow:
         matching_tables: list[TableReference] = [x for x in self.tables_in_second_file if x.table_name == table_name]
         self.table_selected_from_second_file = matching_tables[0] if len(matching_tables) > 0 else None
 
-    def update_create_diff_button(self):
-        if(self._ui_create_diff_button is None):
-            return
-
-        if(None in [self.first_file_path, self.second_file_path, self.destination_file_path,
-                    self.table_selected_from_first_file, self.table_selected_from_second_file]
-                or len(self.key_column_names) == 0):
-
-            self._ui_create_diff_button["state"] = "disabled"
-            return
-
-        self._ui_create_diff_button["state"] = "normal"
-
     def update_key_menu(self):
         if(self.table_selected_from_first_file is None or self.table_selected_from_second_file is None):
             self._ui_key_list_menu.set("Choose a column...")
@@ -356,11 +399,72 @@ class MainWindow:
 
         self._ui_key_delete_button["state"] = "normal"
 
+    def update_button_row(self):
+        self.update_enqueue_button()
+        self.update_create_diff_button()
+        self.update_add_to_queue_button()
+
+    def update_enqueue_button(self):
+        if(self._ui_enqueue_button is None):
+            return
+
+        if(None in [self.first_file_path, self.second_file_path, self.destination_file_path,
+                    self.table_selected_from_first_file, self.table_selected_from_second_file]
+                or len(self.key_column_names) == 0):
+
+            self._ui_enqueue_button["state"] = "disabled"
+            return
+
+        self._ui_enqueue_button["state"] = "normal"
+
+    def update_create_diff_button(self):
+        if(self._ui_create_diff_button is None):
+            return
+
+        if(None in [self.first_file_path, self.second_file_path, self.destination_file_path,
+                    self.table_selected_from_first_file, self.table_selected_from_second_file]
+                or len(self.key_column_names) == 0):
+
+            self._ui_create_diff_button["state"] = "disabled"
+            return
+
+        self._ui_create_diff_button["state"] = "normal"
+
+    def update_add_to_queue_button(self):
+        if(self._ui_add_to_queue_button is None):
+            return
+
+        if(None in [self.first_file_path, self.second_file_path, self.destination_file_path,
+                    self.table_selected_from_first_file, self.table_selected_from_second_file]
+                or len(self.key_column_names) == 0):
+
+            self._ui_add_to_queue_button["state"] = "disabled"
+            return
+
+        self._ui_add_to_queue_button["state"] = "normal"
+
+    def update_diff_queue_listbox(self):
+        listbox: Listbox = self._ui_diff_queue_listbox
+        listbox.delete(0, "end")
+
+        for diff in self.diff_queue:
+            self.add_diff_to_queue_listbox(diff)
+
+    def update_remove_diff_button(self):
+        if(len(self._ui_diff_queue_listbox.curselection()) == 0):
+            self._ui_remove_from_queue_button["state"] = "disabled"
+            return
+
+        self._ui_remove_from_queue_button["state"] = "normal"
+
     # endregion
 
-    def add_diff_to_queue(self, first_filepath: str, second_filepath: str):
-        # self.diff_queue.append(TableDiff())
-        pass
+    def add_diff_to_queue_listbox(self, diff: TableDiff):
+        listbox: Listbox = self._ui_diff_queue_listbox
+        first_file_name:  str = os.path.basename(diff.first_table_ref.filepath)
+        second_file_name: str = os.path.basename(diff.second_table_ref.filepath)
+        dest_file_name:   str = os.path.basename(diff.result_filepath)
+        listbox.insert("end", f"{first_file_name} & {second_file_name} -> {dest_file_name}")
 
     def clear_inputs(self):
         self._ui_first_file_label.config(text="(No file selected)")
@@ -386,9 +490,15 @@ class MainWindow:
         self.update_second_file_table_menu()
         self.update_key_menu()
         self.update_key_delete_button()
-        self.update_create_diff_button()
+        self.update_button_row()
         self.update_selected_first_file_table()
         self.update_selected_second_file_table()
+
+    def clear_queue(self):
+        self.diff_queue.clear()
+
+        if(self._ui_diff_queue is not None):
+            self._switch_to_button_row()
 
     def _hide_button_row(self):
         if(self._ui_button_row_without_queue is None):
@@ -396,7 +506,8 @@ class MainWindow:
 
         self._ui_button_row_without_queue.pack_forget()
         self._ui_button_row_without_queue = None
-        self._ui_create_diff_button = None
+        self._ui_enqueue_button           = None
+        self._ui_create_diff_button       = None
 
     def _hide_diff_queue(self):
         if(self._ui_diff_queue is None):
@@ -408,15 +519,16 @@ class MainWindow:
     def _show_button_row(self):
         action_button_row: Frame = Frame(self._ui_window)
         action_button_row.pack_configure(side="bottom", fill="x", pady=(20, 0))
-        enqueue_button: Button = Button(action_button_row, text="Enqueue")
+        enqueue_button: Button = Button(action_button_row, text="Enqueue", command=self.on_click_enqueue)
         enqueue_button.pack_configure(side="left", padx=5, pady=5)
         enqueue_button["state"] = "disabled"
         create_diff_button: Button = Button(action_button_row, text="Create diff", command=self.on_click_create_single_diff)
         create_diff_button.pack_configure(side="right", fill="x", expand=True, padx=5, pady=5)
+        self._ui_enqueue_button           = enqueue_button
         self._ui_create_diff_button       = create_diff_button
         self._ui_button_row_without_queue = action_button_row
 
-        self.update_create_diff_button()
+        self.update_button_row()
 
     def _show_diff_queue(self):
         diff_queue: Frame = Frame(self._ui_window)
@@ -424,28 +536,32 @@ class MainWindow:
 
         add_to_queue_button_container: Frame = Frame(diff_queue)
         add_to_queue_button_container.pack_configure(side="top", fill="x")
-        add_to_queue_button: Button = Button(add_to_queue_button_container, text="+ Add to queue")
+        add_to_queue_button: Button = Button(add_to_queue_button_container, text="+ Add to queue",
+                                             command=self.on_click_add_to_queue_button)
         add_to_queue_button.pack_configure(fill="both", padx=5, pady=5)
+        self._ui_add_to_queue_button = add_to_queue_button
 
         queue_list: Listbox = Listbox(diff_queue, height=2)
         queue_list.pack_configure(fill="both", expand=True, padx=5)
+        queue_list.bind("<<ListboxSelect>>", lambda e: self.on_selected_queued_diff())
+        self._ui_diff_queue_listbox = queue_list
 
         diff_queue_bottom_button_row: Frame = Frame(diff_queue)
         diff_queue_bottom_button_row.pack_configure(side="bottom", fill="x")
         remove_diff_from_queue_button: Button = Button(diff_queue_bottom_button_row, text="Remove",
-                                                       background="#ffafaf", activebackground="#bc6262")
+                                                       background="#ffafaf", activebackground="#bc6262",
+                                                       command=self.on_click_remove_from_queue)
         remove_diff_from_queue_button.pack_configure(fill="none", padx=5, pady=5, side="left")
         remove_diff_from_queue_button["state"] = "disabled"
-        create_diffs_from_queue_button: Button = Button(diff_queue_bottom_button_row, text="Create diffs")
+        self._ui_remove_from_queue_button = remove_diff_from_queue_button
+        create_diffs_from_queue_button: Button = Button(diff_queue_bottom_button_row, text="Create diffs",
+                                                        command=self.on_click_create_diffs)
         create_diffs_from_queue_button.pack_configure(fill="x", expand=True, padx=5, pady=5, side="right")
+        self._ui_create_diffs_from_queue_button = create_diffs_from_queue_button
 
-        queue_list.insert("end", "One")
-        queue_list.insert("end", "Two")
-        queue_list.insert("end", "Three")
-        queue_list.insert("end", "Four")
-        queue_list.insert("end", "Five")
+        self._ui_diff_queue          = diff_queue
 
-        self._ui_diff_queue = diff_queue
+        self.update_diff_queue_listbox()
 
     def _switch_to_button_row(self):
         self._hide_button_row()
