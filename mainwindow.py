@@ -89,9 +89,9 @@ class MainWindow:
     def display(self):
         window: Tk = Tk()
         self._ui_window = window
-        window.geometry("400x320")
+        window.geometry("400x420")
         window.wm_title("ExcelDiff")
-        window.wm_minsize(400, 320)
+        window.wm_minsize(400, 420)
 
         main_label_row = Frame(window)
         main_label_row.pack_configure(side="top", fill="x", pady=10)
