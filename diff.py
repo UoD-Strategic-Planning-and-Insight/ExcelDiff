@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 import openpyxl
 from openpyxl.cell import Cell
@@ -9,8 +9,8 @@ from openpyxl.worksheet.table import Table
 
 import Utils
 import Utils.boilerplate as bp
-from Utils.tables import TableUtil
 
+from xltables import XLTable
 
 @dataclass
 class TableReference:
@@ -44,8 +44,8 @@ class TableDiff:
     result_filepath:  str
     key_column_names: list[str]
 
-    first_table:  TableUtil | None
-    second_table: TableUtil | None
+    first_table:  XLTable | None
+    second_table: XLTable | None
 
     row_numbers_for_key_sets_in_first:  dict[str, int]
     row_numbers_for_key_sets_in_second: dict[str, int]
@@ -107,7 +107,7 @@ class TableDiff:
         self.row_differences    = []
         self.rows_only_in_first = []
 
-        for row in self.first_table.iter_rows_with_column_names():
+        for row in self.first_table.row_iterator:
             keys: dict[str, Any] = {}
 
             for key_col_name in self.key_column_names:
@@ -128,7 +128,7 @@ class TableDiff:
     def read_rows_only_in_second(self):
         self.rows_only_in_second = []
 
-        for row in self.second_table.iter_rows_with_column_names():
+        for row in self.second_table.row_iterator:
             keys: dict[str, Any] = {}
 
             for key_col_name in self.key_column_names:
@@ -182,11 +182,11 @@ class TableDiff:
                       ref         = f"A1:{Utils.convert_int_to_alphabetic_number(len(self.key_column_names))}1")
 
         sheet.add_table(table)
-        tbl_diff = TableUtil(self.result_filepath, wb, sheet, table)
+        tbl_diff = XLTable(self.result_filepath, wb, sheet, table)
 
         for diff in self.row_differences:
             tbl_diff.add_row()
-            row = tbl_diff.get_bottom_row()
+            row = tbl_diff.bottom_row
 
             for k, v in diff.keys.items():
                 row[k].value = v
@@ -202,7 +202,7 @@ class TableDiff:
                     columns_added = True
 
                 if(columns_added):
-                    row = tbl_diff.get_bottom_row()
+                    row = tbl_diff.bottom_row
 
                 row[col_name_1].value = cell_diff.value1
                 row[col_name_2].value = cell_diff.value2
@@ -233,11 +233,11 @@ class TableDiff:
                       ref         = f"A1:{Utils.convert_int_to_alphabetic_number(table_width)}1")
 
         sheet.add_table(table)
-        tbl = TableUtil(self.result_filepath, wb, sheet, table)
+        tbl = XLTable(self.result_filepath, wb, sheet, table)
 
         for source_row in rows:
             tbl.add_row()
-            dest_row = tbl.get_bottom_row()
+            dest_row = tbl.bottom_row
 
             for k, v in source_row.items():
                 dest_row[k].value = v.value
@@ -268,15 +268,15 @@ class TableDiff:
                       ref=f"A1:{Utils.convert_int_to_alphabetic_number(len(key_columns))}{row_count + 1}")
 
         sheet.add_table(table)
-        tbl = TableUtil(self.result_filepath, wb, sheet, table)
+        tbl = XLTable(self.result_filepath, wb, sheet, table)
 
         for col in columns:
             tbl.add_column(col.column_name, col.values)
 
-    def _build_row_index(self, table: TableUtil, cache: dict[str, int]):
+    def _build_row_index(self, table: XLTable, cache: dict[str, int]):
         row_no: int = -1
 
-        for row in table.iter_rows_with_column_names():
+        for row in table.row_iterator:
             keys: dict[str, str] = {}
             row_no += 1
 
@@ -286,20 +286,20 @@ class TableDiff:
             key_str: str = Utils.dict_to_str(keys)
             cache[key_str] = row_no
 
-    def _get_key_columns(self, table: TableUtil) -> list[TableColumnContent]:
+    def _get_key_columns(self, table: XLTable) -> list[TableColumnContent]:
         result: list[TableColumnContent] = []
 
         for col_name in self.key_column_names:
             col_vals: list[Any] = []
 
-            for row in table.iter_rows_with_column_names():
+            for row in table.row_iterator:
                 col_vals.append(row[col_name].value)
 
             result.append(TableColumnContent(col_name, col_vals))
 
         return result
 
-    def _get_row_with_keys(self, table: TableUtil, keys: dict[str, Any], row_number_lookup_dict: dict[str, int])\
+    def _get_row_with_keys(self, table: XLTable, keys: dict[str, Any], row_number_lookup_dict: dict[str, int])\
             -> dict[str, Cell] | None:
 
         key_string: str = Utils.dict_to_str(keys)
@@ -325,11 +325,11 @@ class TableDiff:
 
         return result
 
-    def _get_columns_not_in_other(self, table: TableUtil, other_table: TableUtil) \
+    def _get_columns_not_in_other(self, table: XLTable, other_table: XLTable) \
             -> list[TableColumnContent]:
 
-        col_names_1 = table.get_column_names()
-        col_names_2 = other_table.get_column_names()
+        col_names_1 = table.column_names
+        col_names_2 = other_table.column_names
 
         cols_not_in_other: list[TableColumnContent] = []
 
@@ -337,7 +337,7 @@ class TableDiff:
             if(col_name not in col_names_2):
                 col_vals: list[Any] = []
 
-                for row in table.iter_rows_with_column_names():
+                for row in table.row_iterator:
                     col_vals.append(row[col_name].value)
 
                 cols_not_in_other.append(TableColumnContent(col_name, col_vals))
