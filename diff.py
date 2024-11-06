@@ -8,7 +8,6 @@ from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.worksheet.table import Table
 
 import Utils
-import Utils.boilerplate as bp
 
 from xltables import XLTable
 
@@ -90,8 +89,8 @@ class TableDiff:
     def load_tables(self):
         ref1              = self.first_table_ref
         ref2              = self.second_table_ref
-        self.first_table  = bp.load_table(ref1.filepath, ref1.sheet_name, ref1.table_name)
-        self.second_table = bp.load_table(ref2.filepath, ref2.sheet_name, ref2.table_name)
+        self.first_table  = XLTable.load_from_file(ref1.filepath, ref1.sheet_name, ref1.table_name)
+        self.second_table = XLTable.load_from_file(ref2.filepath, ref2.sheet_name, ref2.table_name)
 
     def discard_loaded_tables(self):
         self.first_table.source_workbook.close()
