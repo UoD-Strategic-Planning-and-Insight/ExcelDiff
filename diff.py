@@ -1,3 +1,7 @@
+"""
+Contains the TableDiff class, for processing the differences between Excel tables, and associated supporting classes.
+"""
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,55 +15,149 @@ import Utils
 
 from xltables import XLTable
 
+
 @dataclass
 class TableReference:
-    filepath:   str
+    """A reference by filepath to an Excel file, and to a specific table within that Excel file."""
+
+    filepath: str
+    """The filepath of the Excel file containing the table."""
+
     sheet_name: str
+    """The name of the sheet in the Excel file that contains the table."""
+
     table_name: str
+    """The name of the table."""
 
 
 @dataclass
 class CellDifference:
+    """
+    A record of a difference between two cells of the same column in different rows, which may not necessarily be in the
+    same table.
+    """
+
     column_name: str
-    value1:      Any
-    value2:      Any
+    """The name of the column the cells are in."""
+
+    value1: Any
+    """The value of the cell in the first row."""
+
+    value2: Any
+    """The value of the cell in the second row."""
 
 
 @dataclass
 class RowDifference:
-    keys:             dict[str, Any]
+    """A record of a set of differences between two rows with the same keys in different tables."""
+
+    keys: dict[str, Any]
+    """
+    A dictionary of the shared keys between the two rows; the dictionary key is the column name and the dictionary value
+    is the value of the corresponding key cell in those rows. This is a dictionary rather than just a pair of values,
+    because tables may have compound keys - each key of this dictionary would be the name of one of the columns that
+    make up the compound key.
+    """
+
     cell_differences: list[CellDifference]
+    """A list of cell differences between the two rows."""
 
 
 @dataclass
 class TableColumnContent:
+    """A record of the values of cells in a column, along with the column name."""
+
     column_name: str
-    values:      list[Any]
+    """The name of the column."""
+
+    values: list[Any]
+    """A list of the values of the cells in the represented column."""
 
 
 class TableDiff:
-    first_table_ref:  TableReference
-    second_table_ref: TableReference
-    result_filepath:  str
-    key_column_names: list[str]
+    """
+    A queued difference between two tables.
 
-    first_table:  XLTable | None
+    The difference isn't processed immediately. Rather, this contains the information required to establish the
+    differences between two tables, and then save them to a particular file. Once you have a constructed instance of
+    this class, you can establish the differences between two tables and save them to a file with `.process_and_save()`.
+
+    The file produced details the differences between rows shared between the two tables, rows that only exist in one
+    table or the other, and columns that only exist in one table or the other.
+    """
+
+    # TODO: Make this store the rows unique to one table or the other as dictionaries of values, rather than of cells,
+    #       so that there's no possible problem programmatically reading those values once the tables have been
+    #       discarded.
+
+    # TODO: Add a method to process a difference without saving it to a file, so this can be used without saving
+    #       necessarily anything. When done, update inline documentation that directs users to a method to process this
+    #       diff, to mention that method as well.
+
+
+    first_table_ref:  TableReference
+    """A reference to one of the tables being compared."""
+
+    second_table_ref: TableReference
+    """A reference to the other table being compared."""
+
+    result_filepath:  str
+    """The filepath at which to save the differences."""
+
+    key_column_names: list[str]
+    """
+    The names of the columns present in both tables that collectively form a unique identifier. This allows the contents
+    of tables to be compared without having to worry about order.
+    """
+
+
+    first_table: XLTable | None
+    """One of the tables being compared."""
+
     second_table: XLTable | None
+    """The other table being compared."""
+
 
     row_numbers_for_key_sets_in_first:  dict[str, int]
+    """The numbers of every row in the first table, mapped against a the key values of that row, encoded as a string."""
+
     row_numbers_for_key_sets_in_second: dict[str, int]
+    """
+    The numbers of every row in the second table, mapped against a the key values of that row, encoded as a string.
+    """
+
 
     row_differences:        list[RowDifference]
+    """A list of the different rows between the two tables. Only available once processed."""
+
     rows_only_in_first:     list[dict[str, Cell]]
+    """A list of the rows that only exist in the first table. Only available once processed."""
+
     rows_only_in_second:    list[dict[str, Cell]]
+    """A list of the rows that only exist in the second table. Only available once processed."""
+
     columns_only_in_first:  list[TableColumnContent]
+    """A list of the columns that only exist in the first table. Only available once processed."""
+
     columns_only_in_second: list[TableColumnContent]
+    """A list of the columns that only exist in the second table. Only available once processed."""
 
     def __init__(self,
                  first:            TableReference,
                  second:           TableReference,
                  result_filepath:  str,
                  key_column_names: list[str]):
+        """
+        Creates a new TableDiff object.
+
+        This does not immediately process the difference. To process the difference, call `.process_and_save()`
+        :param first: A reference to the first table being compared.
+        :param second: A reference to the second table being compared.
+        :param result_filepath: The filepath the resulting table should be saved to.
+        :param key_column_names: The names of the columns common to both tables that collectively form a
+                                 uniquely-identifying key. This will not behave properly if the given key is not
+                                 completely unique to each row.
+        """
 
         self.first_table_ref  = first
         self.second_table_ref = second
@@ -75,7 +173,13 @@ class TableDiff:
         self.columns_only_in_first  = []
         self.columns_only_in_second = []
 
-    def process_and_save(self):
+    def process_and_save(self) -> None:
+        """
+        Processes the differences between the two tables in this diff, and saves those differences to an Excel file at
+        the filepath stored.
+
+        After calling this, information about the differences between the two tables will be available in this object.
+        """
 
         self.load_tables()
         self.build_table_indices()
@@ -86,23 +190,42 @@ class TableDiff:
         self.save_to_file()
         self.discard_loaded_tables()
 
-    def load_tables(self):
+    def load_tables(self) -> None:
+        """
+        Loads the tables referenced by this diff.
+        """
+
         ref1              = self.first_table_ref
         ref2              = self.second_table_ref
         self.first_table  = XLTable.load_from_file(ref1.filepath, ref1.sheet_name, ref1.table_name)
         self.second_table = XLTable.load_from_file(ref2.filepath, ref2.sheet_name, ref2.table_name)
 
-    def discard_loaded_tables(self):
+    def discard_loaded_tables(self) -> None:
+        """
+        Closes and discards the tables referenced by this diff.
+        """
+
         self.first_table.source_workbook.close()
         self.second_table.source_workbook.close()
         self.first_table  = None
         self.second_table = None
 
-    def build_table_indices(self):
+    def build_table_indices(self) -> None:
+        """
+        Builds indexes of the loaded tables, of the keys for each row against their row numbers. This allows for faster
+        random access to rows.
+        """
+
         self._build_row_index(self.first_table,  self.row_numbers_for_key_sets_in_first)
         self._build_row_index(self.second_table, self.row_numbers_for_key_sets_in_second)
 
-    def read_row_differences(self):
+    def read_row_differences(self) -> None:
+        """
+        Reads the differences between rows common to both tables into this object.
+
+        For speed's sake, this also reads the rows unique to the first table into this object.
+        """
+
         self.row_differences    = []
         self.rows_only_in_first = []
 
@@ -124,7 +247,11 @@ class TableDiff:
             if(len(cell_diffs) != 0):
                 self.row_differences.append(RowDifference(keys, cell_diffs))
 
-    def read_rows_only_in_second(self):
+    def read_rows_only_in_second(self) -> None:
+        """
+        Reads the rows unique to the second table into this object.
+        """
+
         self.rows_only_in_second = []
 
         for row in self.second_table.row_iterator:
@@ -139,13 +266,26 @@ class TableDiff:
             if(not matching_row_exists_in_first):
                 self.rows_only_in_second.append(row)
 
-    def read_columns_only_in_first(self):
+    def read_columns_only_in_first(self) -> None:
+        """
+        Reads the rows unique to the first table into this object.
+        """
+
         self.columns_only_in_first = self._get_columns_not_in_other(self.first_table, self.second_table)
 
-    def read_columns_only_in_second(self):
+    def read_columns_only_in_second(self) -> None:
+        """
+        Reads the rows unique to the second table into this object.
+        """
+
         self.columns_only_in_second = self._get_columns_not_in_other(self.second_table, self.first_table)
 
-    def save_to_file(self):
+    def save_to_file(self) -> None:
+        """
+        Creates an Excel file at the stored filepath and populates it, as needed, with sheets for the differences
+        between common rows, the rows unique to one table or another, and the columns unique to one table or another.
+        """
+
         wb = openpyxl.Workbook()
 
         self._add_diffs_sheet_to_workbook(wb)
@@ -167,7 +307,12 @@ class TableDiff:
         wb.remove_sheet(wb.get_sheet_by_name("Sheet"))
         wb.save(self.result_filepath)
 
-    def _add_diffs_sheet_to_workbook(self, wb: Workbook):
+    def _add_diffs_sheet_to_workbook(self, wb: Workbook) -> None:
+        """
+        Write the differences between common rows that have been processed into the given workbook as a sheet.
+        :param wb: The workbook to write the sheet into.
+        """
+
         if(len(self.row_differences) == 0):
             return
 
@@ -211,7 +356,17 @@ class TableDiff:
                                                 rows:        list[dict[str, Cell]],
                                                 sheet_index: int,
                                                 sheet_name:  str,
-                                                table_name:  str):
+                                                table_name:  str) \
+            -> None:
+        """
+        Write the rows unique to one of the tables to the given workbook as a sheet.
+        :param wb: The workbook to write the sheet into.
+        :param rows: The rows unique to the table.
+        :param sheet_index: The index of the sheet in the workbook.
+        :param sheet_name: The name of the sheet.
+        :param table_name: The name of the table to be written.
+        """
+
         if(len(rows) == 0):
             return
 
@@ -247,7 +402,17 @@ class TableDiff:
                                                    columns:     list[TableColumnContent],
                                                    sheet_index: int,
                                                    sheet_name:  str,
-                                                   table_name:  str):
+                                                   table_name:  str) \
+            -> None:
+        """
+        Write the columns unique to one of the tables to the given workbook as a sheet.
+        :param wb: The workbook to write the sheet into.
+        :param key_columns: The columns used to uniquely identify rows in the two tables.
+        :param columns: The columns unique to one of the tables.
+        :param sheet_index: The index of the sheet in the workbook.
+        :param sheet_name: The name of the sheet.
+        :param table_name: The name of the table to be written.
+        """
 
         if(len(columns) == 0):
             return
@@ -272,7 +437,14 @@ class TableDiff:
         for col in columns:
             tbl.add_column(col.column_name, col.values)
 
-    def _build_row_index(self, table: XLTable, cache: dict[str, int]):
+    def _build_row_index(self, table: XLTable, index: dict[str, int]) -> None:
+        """
+        Populates a given dictionary with string-encoded versions of the keys of every row, and the number that row
+        appears in.
+        :param table: The table this is an index for.
+        :param index: The dictionary serving as an index. It should be empty.
+        """
+
         row_no: int = -1
 
         for row in table.row_iterator:
@@ -283,9 +455,16 @@ class TableDiff:
                 keys[key_col_name] = row[key_col_name].value
 
             key_str: str = Utils.dict_to_str(keys)
-            cache[key_str] = row_no
+            index[key_str] = row_no
 
     def _get_key_columns(self, table: XLTable) -> list[TableColumnContent]:
+        """
+        Gets a list of the key columns in full (their names and contents) from the given table.
+        :param table: The table to get the key columns from.
+        :return: A list of the columns (as TableColumnContent objects) that form the uniquely identifying key in the
+                 given table.
+        """
+
         result: list[TableColumnContent] = []
 
         for col_name in self.key_column_names:
@@ -298,8 +477,19 @@ class TableDiff:
 
         return result
 
+
     def _get_row_with_keys(self, table: XLTable, keys: dict[str, Any], row_number_lookup_dict: dict[str, int])\
             -> dict[str, Cell] | None:
+        """
+        Gets the row in the given table with the given keys.
+        :param table: The table to look a row up in.
+        :param keys: Dictionary where the keys are the names of columns that make up part of the uniquely identifying
+                     key in the table, and the values are the values for those columns in the sought-after row.
+        :param row_number_lookup_dict: A dictionary containing the numbers of every row in the given table, mapped to
+                                       the keys for those rows encoded as a string.
+        :return: If a row was found in the table (using the given index), that row as a dictionary of cells mapped to
+                 their column names. Otherwise, null.
+        """
 
         key_string: str = Utils.dict_to_str(keys)
         row_no: int | None = row_number_lookup_dict.get(key_string)
@@ -307,6 +497,14 @@ class TableDiff:
 
     def _get_differences_between_rows(self, first: dict[str, Cell], second: dict[str, Cell]) \
             -> list[CellDifference]:
+        """
+        Gets the differences between two rows.
+        :param first: One of the rows to compare, as a dictionary where the keys are the column names and the values are
+                      the corresponding cells.
+        :param second: The other row to compare, as a dictionary where the keys are the column names and the values are
+                      the corresponding cells.
+        :return: A list of cell differences, differences between cells in the given rows from the same columns.
+        """
 
         result: list[CellDifference] = []
 
@@ -326,6 +524,12 @@ class TableDiff:
 
     def _get_columns_not_in_other(self, table: XLTable, other_table: XLTable) \
             -> list[TableColumnContent]:
+        """
+        Gets the columns in unique to one of the tables.
+        :param table: The table that may contain columns not in the other.
+        :param other_table: The other table to compare.
+        :return: A list of the columns in the first table that are not present in the second.
+        """
 
         col_names_1 = table.column_names
         col_names_2 = other_table.column_names
